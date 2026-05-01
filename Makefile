@@ -43,6 +43,3 @@ always:
 #
 clean:
 	rm -rf $(BUILD_DIR)/*
-
-
-# qemu-system-x86_64 -fda build/main_floppy.img

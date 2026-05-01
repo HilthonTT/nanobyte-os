@@ -127,21 +127,150 @@ main:
     mov ss, ax
     mov sp, 0x7C00
 
+    ; --- Read something from the floppy --------------------------------------
+    ; BIOS sets DL to the boot drive number on entry; stash it for later use
+    ; (and so disk_reset can find it via [ebr_drive_number] if we ever pass
+    ; the drive number through memory instead of DL).
+    mov [ebr_drive_number], dl
+
+    mov ax, 1               ; LBA = 1, second sector from disk.
+    mov cl, 1               ; 1 sector to read.
+    mov bx, 0x7E00          ; Destination = right after the bootloader.
+    call disk_read
+
     ; --- Print greeting ------------------------------------------------------
     mov si, msg_hello
     call puts
 
     ; --- Halt ----------------------------------------------------------------
-    hlt                 ; Park the CPU until the next interrupt.
+    cli                     ; Disable interrupts so we can't get woken out of
+    hlt                     ; the halt state.
+
+;
+; Error handlers
+;
+floppy_error:
+    mov si, msg_read_failed
+    call puts
+    jmp wait_key_and_reboot
+
+wait_key_and_reboot:
+    mov ah, 0
+    int 16h                 ; Wait for keypress.
+    jmp 0FFFFh:0            ; Far jump to BIOS reset vector — reboots.
 
 .halt:
-    jmp .halt           ; If we *do* get woken (e.g. timer tick), loop here
-                        ; forever instead of falling through into garbage.
+    cli                     ; Disable interrupts so we can't get woken out of
+    hlt                     ; the halt state.
+
+;
+; Disk routines
+;
+
+; -----------------------------------------------------------------------------
+; lba_to_chs — convert an LBA address to a CHS triple.
+;
+;   In:    AX = LBA address
+;   Out:   CX[0..5]  = sector number
+;          CX[6..15] = cylinder
+;          DH        = head
+;          DL        = drive number (preserved)
+; -----------------------------------------------------------------------------
+lba_to_chs:
+    push ax
+    push dx
+
+    xor dx, dx                          ; DX = 0 for the 32-bit dividend.
+    div word [bdb_sectors_per_track]    ; AX = LBA / SectorsPerTrack
+                                        ; DX = LBA % SectorsPerTrack
+    inc dx                              ; Sector numbers are 1-based.
+    mov cx, dx                          ; CX[0..5] = sector.
+
+    xor dx, dx                          ; DX = 0 again.
+    div word [bdb_heads]                ; AX = (LBA / SPT) / Heads = cylinder
+                                        ; DX = (LBA / SPT) % Heads = head
+    mov dh, dl                          ; DH = head.
+    mov ch, al                          ; CH = low 8 bits of cylinder.
+    shl ah, 6
+    or cl, ah                           ; CL[6..7] = high 2 bits of cylinder.
+
+    pop ax                              ; AX = original DX (saved earlier).
+    mov dl, al                          ; Restore DL (drive number); DH stays.
+    pop ax                              ; Restore the original AX.
+    ret
+
+; -----------------------------------------------------------------------------
+; disk_read — read sectors from a disk via INT 13h / AH=02h.
+;
+;   In:    AX     = LBA address
+;          CL     = number of sectors to read (up to 128)
+;          DL     = drive number
+;          ES:BX  = destination buffer
+;   Out:   carry clear on success; jumps to floppy_error on failure.
+; -----------------------------------------------------------------------------
+disk_read:
+    push ax                             ; Save registers we'll modify.
+    push bx
+    push cx
+    push dx
+    push di
+
+    push cx                             ; Stash CL (sector count) — lba_to_chs
+                                        ; will overwrite CX with CHS data.
+    call lba_to_chs                     ; Compute CHS from LBA in AX.
+    pop ax                              ; AL = number of sectors to read.
+
+    mov ah, 02h                         ; INT 13h / AH=02h: read sectors.
+    mov di, 3                           ; Retry up to 3 times.
+
+.retry:
+    pusha                               ; BIOS may clobber anything; save all.
+    stc                                 ; Some buggy BIOSes don't set CF on
+                                        ; failure — pre-set it so JNC works.
+    int 13h
+    jnc .done                           ; CF clear = success.
+
+    ; Read failed — reset the controller and retry.
+    popa
+    call disk_reset
+
+    dec di
+    test di, di
+    jnz .retry
+
+.fail:
+    ; All attempts exhausted.
+    jmp floppy_error
+
+.done:
+    popa                                ; Match the pusha at .retry.
+
+    pop di                              ; Restore registers modified above.
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+; -----------------------------------------------------------------------------
+; disk_reset — reset the disk controller via INT 13h / AH=00h.
+;
+;   In:    DL = drive number
+; -----------------------------------------------------------------------------
+disk_reset:
+    pusha
+    mov ah, 0
+    stc
+    int 13h
+    jc floppy_error
+    popa
+    ret
 
 ; =============================================================================
 ; Data
 ; =============================================================================
-msg_hello:  db 'Hello world!', ENDL, 0
+msg_hello:          db 'Hello world!', ENDL, 0
+msg_read_failed:    db 'Read from disk fail!', ENDL, 0
 
 ; =============================================================================
 ; Boot signature
