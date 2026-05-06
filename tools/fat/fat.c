@@ -17,6 +17,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 
 // Length of a FAT 8.3 directory-entry name (8-char base + 3-char ext, no dot).
 #define FAT_NAME_LEN 11
@@ -85,6 +86,7 @@ typedef struct {
 static BootSector       g_BootSector;
 static uint8_t*         g_Fat           = NULL;
 static DirectoryEntry*  g_RootDirectory = NULL;
+static uint32_t g_RootDirectoryEnd;
 
 // -----------------------------------------------------------------------------
 // readBootSector — read sector 0 into g_BootSector.
@@ -151,6 +153,9 @@ static bool readRootDirectory(FILE* disk) {
                 allocBytes);
         return false;
     }
+
+    g_RootDirectoryEnd = lba + sectors;
+
     return readSectors(disk, lba, sectors, g_RootDirectory);
 }
 
@@ -168,6 +173,26 @@ static DirectoryEntry* findFile(const char* name) {
         }
     }
     return NULL;
+}
+
+static bool readFile(DirectoryEntry* fileEntry, FILE* disk, uint8_t* outputBuffer) {
+    bool ok = true;
+    uint16_t currentCluster = fileEntry->FirstClusterLow;
+
+    do {
+        uint32_t lba = g_RootDirectoryEnd + (currentCluster - 2) * g_BootSector.SectorsPerCluster;
+        ok = ok && readSectors(disk, lba, g_BootSector.SectorsPerCluster, outputBuffer);
+        outputBuffer += g_BootSector.SectorsPerCluster * g_BootSector.BytesPerSector;
+
+        uint32_t fatIndex = currentCluster * 3 / 2;
+        if (currentCluster % 2 == 0) {
+            currentCluster = (*(uint16_t*)(g_Fat + fatIndex)) & 0x0FFF;
+        } else {
+            currentCluster = (*(uint16_t*)(g_Fat + fatIndex)) >> 4;
+        }
+    } while (ok && currentCluster < 0x0FF8);
+
+    return ok;
 }
 
 // -----------------------------------------------------------------------------
@@ -214,11 +239,28 @@ int main(int argc, char** argv) {
     printf("Found %s: %u bytes, first cluster %u\n",
            argv[2], fileEntry->Size, fileEntry->FirstClusterLow);
 
+    uint8_t* buffer = (uint8_t*)malloc(fileEntry->Size + g_BootSector.BytesPerSector);
+    if (!readFile(fileEntry, disk, buffer)) {
+        fprintf(stderr, "Could not read file %s!\n", argv[2]);
+        rc = 6;
+        goto cleanup;
+    }
+
+    for (size_t i = 0; i < fileEntry->Size; i++) {
+        if (isprint(buffer[i]) || buffer[i] == '\n' || buffer[i] == '\t' || buffer[i] == '\r') {
+            fputc(buffer[i], stdout);
+        } else {
+            printf("<%02x>", buffer[i]);
+        }
+    }
+    printf("\n");
+
 cleanup:
     // free(NULL) is a no-op, so this is safe even if some allocations
     // never happened (e.g. we bailed out before readFat).
     free(g_Fat);
     free(g_RootDirectory);
     fclose(disk);
+    free(buffer);
     return rc;
 }
