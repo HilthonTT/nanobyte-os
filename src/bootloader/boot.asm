@@ -106,7 +106,7 @@ start:
     mov [ebr_drive_number], dl
 
     ; --- Print greeting ------------------------------------------------------
-    mov si, msg_hello
+    mov si, msg_loading
     call puts
 
     ; read drive parameters (sectors per track and head count),
@@ -127,7 +127,7 @@ start:
     ; read FAT root directory
     ; compute LBA of root directory = reserved + fats * sectors_per_fat
     ; note: this section can be hardcoded
-    mov ax, [bdb_bytes_per_fat]         
+    mov ax, [bdb_sectors_per_fat]         
     mov bl, [bdb_fat_count]
     xor bh, bh
     mul bx                              ; dx:ax = (fats * sectors_per_fat)
@@ -141,7 +141,7 @@ start:
     div word [bdb_bytes_per_sector] ; number of sectors we need to read
 
     test dx, dx                     ; if dx != 0, add 1
-    jz root_dir_after
+    jz .root_dir_after
     inc ax                          ; division remainder != 0, add 1
                                     ; this means we have a sector only partially filled with entries
 
@@ -183,11 +183,63 @@ start:
     ; load FAT from disk into memory
     mov ax, [bdb_reserved_sectors]
     mov bx, buffer
-    mov cl [bdb_sectors_per_fat]
+    mov cl, [bdb_sectors_per_fat]
     mov dl, [ebr_drive_number]
     call disk_read
 
-    ; TODO: read kernel and process FAT chain
+    ; read kernel and process FAT chain
+    mov bx, KERNEL_LOAD_SEGMENT
+    mov es, bx
+    mov bx, KERNEL_LOAD_OFFSET
+
+.load_kernel_loop:
+    ; Read next cluster
+    mov ax, [kernel_cluster]
+    ; not nice :( hardcoded value
+    add ax, 31                  ; first cluster = (cluster number - 2) * sectors_per_cluster + start_sector
+                                ; start sector = reserved + fats + root directory size = 1 +18 + 134 = 33
+
+    mov cl, 1
+    mov dl, [ebr_drive_number]
+    call disk_read
+
+    add bx, [bdb_bytes_per_sector]
+
+    ; compute location of next cluster
+    mov ax, [kernel_cluster]
+    mov cx, 3
+    mul cx
+    mov cx, 2
+    div cx                     ; ax = index of entry in FAT, dx = cluster mod 2
+
+    mov si, buffer
+    add si, ax
+    mov ax, [ds:si]            ; read entry from FAT table at index ax
+
+.odd:
+    shr ax, 4
+
+.even:
+    and ax, 0x0FFF
+
+.next_cluster_after:
+    cmp ax, 0x0FF8          ; end of chain
+    jae .read_finish
+
+    mov [kernel_cluster], ax
+
+.read_finish:
+    ; jump to our kernel
+    mov dl, [ebr_drive_number] ; boot device in dl
+    
+    ; set segment registers
+    mov ax, KERNEL_LOAD_SEGMENT
+    mov ds, ax
+    mov es, ax
+
+    jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_SEGMENT
+    
+    jmp wait_key_and_reboot
 
 
     ; --- Halt ----------------------------------------------------------------
@@ -205,7 +257,7 @@ floppy_error:
 kernel_not_found_error:
     mov si, msg_kernel_not_found
     call puts
-    jump wait_key_and_reboot
+    jmp wait_key_and_reboot
 
 wait_key_and_reboot:
     mov ah, 0
@@ -361,6 +413,9 @@ file_kernel_bin:        db 'KERNEL  BIN'
 msg_kernel_not_found:   db 'KERNEL.BIN file not found!', ENDL, 0
 kernel_cluster:         dw 0
 
+KERNEL_LOAD_SEGMENT     equ 0x2000
+KERNEL_LOAD_OFFSET      equ 0
+
 ; =============================================================================
 ; Boot signature
 ; =============================================================================
@@ -372,3 +427,5 @@ kernel_cluster:         dw 0
 times 510-($-$$) db 0   ; Zero-fill up to byte 510. ($-$$) = current offset
                         ; from the start of the section.
 dw 0xAA55               ; Boot sector signature.
+
+buffer:
