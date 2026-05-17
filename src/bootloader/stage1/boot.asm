@@ -176,12 +176,12 @@ start:
     ; FAT-style directory entries store the filename as 8 chars + 3 chars,
     ; space-padded, with no dot. So "kernel.bin" is the 11 bytes
     ; 'K','E','R','N','E','L',' ',' ','B','I','N'. We compare each entry's
-    ; first 11 bytes against `file_kernel_bin` until we find a match.
+    ; first 11 bytes against `file_stage2_bin` until we find a match.
     xor bx, bx                          ; BX = entry counter (0, 1, 2, …).
     mov di, buffer                      ; DI = pointer into the directory.
 
 .search_kernel:
-    mov si, file_kernel_bin             ; SI = expected filename.
+    mov si, file_stage2_bin             ; SI = expected filename.
     mov cx, 11                          ; Compare up to 11 bytes.
     push di                             ; `cmpsb` advances DI; save it so we
                                         ; can recover the entry start address.
@@ -206,7 +206,7 @@ start:
     ; of the file's data — the head of a linked list we'll walk through
     ; the FAT to find every cluster the file occupies.
     mov ax, [di + 26]
-    mov [kernel_cluster], ax
+    mov [stage2_cluster], ax
 
     ; --- Load the FAT itself into our scratch buffer -------------------------
     ; The FAT lives right after the reserved sectors (one of which is us).
@@ -232,7 +232,7 @@ start:
     ; are numbered starting from 2 (clusters 0 and 1 are reserved). For
     ; this specific 1.44 MB layout that simplifies to LBA = cluster + 31.
     ; (Yes, this is hardcoded — fine for a tutorial bootloader.)
-    mov ax, [kernel_cluster]
+    mov ax, [stage2_cluster]
     add ax, 31                          ; cluster N → LBA N+31.
 
     mov cl, 1                           ; Read exactly one sector (=1 cluster here).
@@ -248,7 +248,7 @@ start:
     ;   * The remainder tells us which of the two we want:
     ;       0 → the "even" (low) 12 bits of the 16-bit word at that offset
     ;       1 → the "odd"  (high) 12 bits — i.e. shift right by 4.
-    mov ax, [kernel_cluster]
+    mov ax, [stage2_cluster]
     mov cx, 3
     mul cx                              ; AX = cluster * 3.
     mov cx, 2
@@ -278,7 +278,7 @@ start:
                                         ; we've read the whole file.
     jae .read_finish
 
-    mov [kernel_cluster], ax            ; Otherwise loop with the next cluster.
+    mov [stage2_cluster], ax            ; Otherwise loop with the next cluster.
 
 .read_finish:
     ; --- Hand control to the kernel ------------------------------------------
@@ -317,7 +317,7 @@ floppy_error:
     jmp wait_key_and_reboot
 
 kernel_not_found_error:
-    mov si, msg_kernel_not_found
+    mov si, msg_stage2_not_found
     call puts
     jmp wait_key_and_reboot
 
@@ -480,9 +480,9 @@ disk_reset:
 ; =============================================================================
 msg_loading:            db 'Loading...', ENDL, 0
 msg_read_failed:        db 'Read from disk fail!', ENDL, 0
-file_kernel_bin:        db 'STAGE2  BIN'
-msg_kernel_not_found:   db 'STAGE2.BIN file not found!', ENDL, 0
-kernel_cluster:         dw 0
+file_stage2_bin:        db 'STAGE2  BIN'
+msg_stage2_not_found:   db 'STAGE2.BIN file not found!', ENDL, 0
+stage2_cluster:         dw 0
 
 KERNEL_LOAD_SEGMENT     equ 0x2000
 KERNEL_LOAD_OFFSET      equ 0
