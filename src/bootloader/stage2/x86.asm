@@ -2,6 +2,36 @@ bits 16
 
 section _TEXT class=CODE
 
+
+;========================================================================
+;==     Name:           U4D                                            ==
+;==     Operation:      Unsigned 4 byte divide                         ==
+;==     Inputs:         DX;AX   Dividend                               ==
+;==                     CX;BX   Divisor                                ==
+;==     Outputs:        DX;AX   Quotient                               ==
+;==                     CX;BX   Remainder                              ==
+;==     Volatile:       none                                           ==
+;========================================================================
+global __U4D
+__U4D:
+    shl edx, 16     ; dx to upper half of edx
+    mov dx, ax      ; edx - dividend
+    mov eax, edx    ; edx - dividend
+    xor edx, edx
+
+    shl ecx, 16     ; cx to upper half of ecx
+    mov cx, bx      ; ecx - divisor
+
+    div ecx         ; eax - quot, edx - remainder
+    mov ebx, edx
+    mov ecx, edx
+    shr ecx, 16
+
+    mov edx, eax
+    shr edx, 16
+
+    ret
+
 ;
 ; void _cdecl x86_div64_32(uint64_t dividend, uint32_t divisor, uint64_t* quotientOut, uint32_t* remainderOut);
 ;
@@ -75,7 +105,7 @@ _x86_Video_WriteCharTeletype:
     ret
 
 ;
-; void _cdecl x86_Disk_Reset(uint8_t drive);
+; bool _cdecl x86_Disk_Reset(uint8_t drive);
 ;
 global _x86_Disk_Reset
 _x86_Disk_Reset:
@@ -97,7 +127,7 @@ _x86_Disk_Reset:
     ret
 
 ;
-; void _cdecl x86_Disk_Read(
+; bool _cdecl x86_Disk_Read(
 ;       uint8_t drive,
 ;       uint16_t cylinder,
 ;       uint16_t head,
@@ -105,7 +135,7 @@ _x86_Disk_Reset:
 ;       uint8_t count,
 ;       uint8_t *dataOut);
 ;
-global x86_Disk_Read
+global _x86_Disk_Read
 _x86_Disk_Read:
     ; make new call frame
     push bp             ; save old call frame
@@ -150,14 +180,14 @@ _x86_Disk_Read:
     pop bp
     ret
 
-; void _cdecl x86_Disk_GetDriveParams(
+; bool _cdecl x86_Disk_GetDriveParams(
 ;     uint8_t drive,
 ;     uint8_t *driveTypeOut,
-;     uint8_t *cylindersOut,
-;     uint16_t sectorsOut,
+;     uint16_t *cylindersOut,
+;     uint16_t *sectorsOut,
 ;     uint16_t *headsOut);
 
-global x86_Disk_GetDriveParams
+global _x86_Disk_GetDriveParams
 _x86_Disk_GetDriveParams:
     ; make new call frame
     push bp             ; save old call frame
