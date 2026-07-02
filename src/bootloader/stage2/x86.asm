@@ -3,31 +3,56 @@ bits 16
 section _TEXT class=CODE
 
 
-;========================================================================
-;==     Name:           U4D                                            ==
-;==     Operation:      Unsigned 4 byte divide                         ==
-;==     Inputs:         DX;AX   Dividend                               ==
-;==                     CX;BX   Divisor                                ==
-;==     Outputs:        DX;AX   Quotient                               ==
-;==                     CX;BX   Remainder                              ==
-;==     Volatile:       none                                           ==
-;========================================================================
+;
+; U4D
+;
+; Operation:      Unsigned 4 byte divide
+; Inputs:         DX;AX   Dividend
+;                 CX;BX   Divisor
+; Outputs:        DX;AX   Quotient
+;                 CX;BX   Remainder
+; Volatile:       none
+;
 global __U4D
 __U4D:
-    shl edx, 16     ; dx to upper half of edx
-    mov dx, ax      ; edx - dividend
-    mov eax, edx    ; edx - dividend
+    shl edx, 16         ; dx to upper half of edx
+    mov dx, ax          ; edx - dividend
+    mov eax, edx        ; eax - dividend
     xor edx, edx
 
-    shl ecx, 16     ; cx to upper half of ecx
-    mov cx, bx      ; ecx - divisor
+    shl ecx, 16         ; cx to upper half of ecx
+    mov cx, bx          ; ecx - divisor
 
-    div ecx         ; eax - quot, edx - remainder
+    div ecx             ; eax - quot, edx - remainder
     mov ebx, edx
     mov ecx, edx
     shr ecx, 16
 
     mov edx, eax
+    shr edx, 16
+
+    ret
+
+
+;
+; U4M
+; Operation:      integer four byte multiply
+; Inputs:         DX;AX   integer M1
+;                 CX;BX   integer M2
+; Outputs:        DX;AX   product
+; Volatile:       CX, BX destroyed
+;
+global __U4M
+__U4M:
+    shl edx, 16         ; dx to upper half of edx
+    mov dx, ax          ; m1 in edx
+    mov eax, edx        ; m1 in eax
+
+    shl ecx, 16         ; cx to upper half of ecx
+    mov cx, bx          ; m2 in ecx
+
+    mul ecx             ; result in edx:eax (we only need eax)
+    mov edx, eax        ; move upper half to dx
     shr edx, 16
 
     ret
@@ -104,11 +129,13 @@ _x86_Video_WriteCharTeletype:
     pop bp
     ret
 
+
 ;
 ; bool _cdecl x86_Disk_Reset(uint8_t drive);
 ;
 global _x86_Disk_Reset
 _x86_Disk_Reset:
+
     ; make new call frame
     push bp             ; save old call frame
     mov bp, sp          ; initialize new call frame
@@ -119,39 +146,45 @@ _x86_Disk_Reset:
     int 13h
 
     mov ax, 1
-    sbb ax, 0           ; 1 = true, 0 = false
+    sbb ax, 0           ; 1 on success, 0 on fail   
 
     ; restore old call frame
     mov sp, bp
     pop bp
     ret
 
+
 ;
-; bool _cdecl x86_Disk_Read(
-;       uint8_t drive,
-;       uint16_t cylinder,
-;       uint16_t head,
-;       uint16_t sector,
-;       uint8_t count,
-;       uint8_t *dataOut);
+; bool _cdecl x86_Disk_Read(uint8_t drive,
+;                           uint16_t cylinder,
+;                           uint16_t sector,
+;                           uint16_t head,
+;                           uint8_t count,
+;                           void far * dataOut);
 ;
 global _x86_Disk_Read
 _x86_Disk_Read:
+
     ; make new call frame
     push bp             ; save old call frame
     mov bp, sp          ; initialize new call frame
 
+    ; save modified regs
+    push bx
+    push es
+
+    ; setup args
     mov dl, [bp + 4]    ; dl - drive
 
-    mov ch, [bp + 6]     ; ch - cylinder (lower 8 bits)
-    mov cl, [bp + 7]    ; ch - cylinder to bits 6-7
+    mov ch, [bp + 6]    ; ch - cylinder (lower 8 bits)
+    mov cl, [bp + 7]    ; cl - cylinder to bits 6-7
     shl cl, 6
-
-    mov dh, [bp + 8]    ; dh - head
-
-    mov al, [bp + 10]
+    
+    mov al, [bp + 8]    ; cl - sector to bits 0-5
     and al, 3Fh
-    or cl, al           ; cl - sector to bits 0-5
+    or cl, al
+
+    mov dh, [bp + 10]   ; dh - head
 
     mov al, [bp + 12]   ; al - count
 
@@ -166,29 +199,28 @@ _x86_Disk_Read:
 
     ; set return value
     mov ax, 1
-    sbb ax, 0           ; 1 on success, 0 on fail
+    sbb ax, 0           ; 1 on success, 0 on fail   
 
     ; restore regs
     pop es
     pop bx
-
-    mov ax, 1
-    sbb ax, 0           ; 1 = true, 0 = false
 
     ; restore old call frame
     mov sp, bp
     pop bp
     ret
 
-; bool _cdecl x86_Disk_GetDriveParams(
-;     uint8_t drive,
-;     uint8_t *driveTypeOut,
-;     uint16_t *cylindersOut,
-;     uint16_t *sectorsOut,
-;     uint16_t *headsOut);
 
+;
+; bool _cdecl x86_Disk_GetDriveParams(uint8_t drive,
+;                                     uint8_t* driveTypeOut,
+;                                     uint16_t* cylindersOut,
+;                                     uint16_t* sectorsOut,
+;                                     uint16_t* headsOut);
+;
 global _x86_Disk_GetDriveParams
 _x86_Disk_GetDriveParams:
+
     ; make new call frame
     push bp             ; save old call frame
     mov bp, sp          ; initialize new call frame
@@ -201,9 +233,9 @@ _x86_Disk_GetDriveParams:
 
     ; call int13h
     mov dl, [bp + 4]    ; dl - disk drive
-    mov ah, 08h         
+    mov ah, 08h
     mov di, 0           ; es:di - 0000:0000
-    mov es, di          
+    mov es, di
     stc
     int 13h
 
@@ -212,11 +244,11 @@ _x86_Disk_GetDriveParams:
     sbb ax, 0
 
     ; out params
-    mov si, [bp + 6]   ; drive type from bl
-    mov [si], bl       
+    mov si, [bp + 6]    ; drive type from bl
+    mov [si], bl
 
-    mov bl, ch         ; lower bits in ch
-    mov bh, cl         ; upper bits in cl (6-7)
+    mov bl, ch          ; cylinders - lower bits in ch
+    mov bh, cl          ; cylinders - upper bits in cl (6-7)
     shr bh, 6
     mov si, [bp + 8]
     mov [si], bx
