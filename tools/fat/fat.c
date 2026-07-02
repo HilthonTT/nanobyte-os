@@ -295,7 +295,7 @@ bool FAT_FindFile(DISK *disk, FAT_File far *file, const char *name, FAT_Director
     for (int i = 0; i < 8 && name[i] && name + i < ext; i++)
         fatName[i] = toupper(name[i]);
 
-    if (ext != NULL)
+    if (ext != name + 11)
     {
         for (int i = 0; i < 3 && ext[i + 1]; i++)
             fatName[i + 8] = toupper(ext[i + 1]);
@@ -331,14 +331,14 @@ FAT_File far *FAT_Open(DISK *disk, const char *path)
         if (delim != NULL)
         {
             memcpy(name, path, delim - path);
-            name[delim - path + 1] = '\0';
+            name[delim - path] = '\0';
             path = delim + 1;
         }
         else
         {
             unsigned len = strlen(path);
             memcpy(name, path, len);
-            name[len + 1] = '\0';
+            name[len] = '\0';
             path += len;
             isLast = true;
         }
@@ -350,7 +350,7 @@ FAT_File far *FAT_Open(DISK *disk, const char *path)
             FAT_Close(current);
 
             // check if directory
-            if (!isLast && entry.Attributes & FAT_ATTRIBUTE_DIRECTORY == 0)
+            if (!isLast && (entry.Attributes & FAT_ATTRIBUTE_DIRECTORY) == 0)
             {
                 printf("FAT: %s not a directory\r\n", name);
                 return NULL;

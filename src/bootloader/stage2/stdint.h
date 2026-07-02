@@ -17,4 +17,3 @@ typedef uint8_t bool;
 #define NULL ((void *)0)
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
-#define far

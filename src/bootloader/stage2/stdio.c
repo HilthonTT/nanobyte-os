@@ -1,15 +1,21 @@
 #include "stdio.h"
 #include "x86.h"
 
-// internal forward decl
-int *printf_number(int *argp, int length, bool sign, int radix);
-
 void putc(char c)
 {
     x86_Video_WriteCharTeletype(c, 0);
 }
 
 void puts(const char *str)
+{
+    while (*str)
+    {
+        putc(*str);
+        str++;
+    }
+}
+
+void puts_f(const char far *str)
 {
     while (*str)
     {
@@ -30,6 +36,8 @@ void puts(const char *str)
 #define PRINTF_LENGTH_LONG 3
 #define PRINTF_LENGTH_LONG_LONG 4
 
+int *printf_number(int *argp, int length, bool sign, int radix);
+
 void _cdecl printf(const char *fmt, ...)
 {
     int *argp = (int *)&fmt;
@@ -38,7 +46,7 @@ void _cdecl printf(const char *fmt, ...)
     int radix = 10;
     bool sign = false;
 
-    argp++; // step past fmt
+    argp++;
 
     while (*fmt)
     {
@@ -79,9 +87,7 @@ void _cdecl printf(const char *fmt, ...)
                 state = PRINTF_STATE_SPEC;
             }
             else
-            {
                 goto PRINTF_STATE_SPEC_;
-            }
             break;
 
         case PRINTF_STATE_LENGTH_LONG:
@@ -91,9 +97,7 @@ void _cdecl printf(const char *fmt, ...)
                 state = PRINTF_STATE_SPEC;
             }
             else
-            {
                 goto PRINTF_STATE_SPEC_;
-            }
             break;
 
         case PRINTF_STATE_SPEC:
@@ -104,24 +108,37 @@ void _cdecl printf(const char *fmt, ...)
                 putc((char)*argp);
                 argp++;
                 break;
+
             case 's':
-                puts(*(char **)argp);
-                argp++;
+                if (length == PRINTF_LENGTH_LONG || length == PRINTF_LENGTH_LONG_LONG)
+                {
+                    puts_f(*(const char far **)argp);
+                    argp += 2;
+                }
+                else
+                {
+                    puts(*(const char **)argp);
+                    argp++;
+                }
                 break;
+
             case '%':
                 putc('%');
                 break;
+
             case 'd':
             case 'i':
                 radix = 10;
                 sign = true;
                 argp = printf_number(argp, length, sign, radix);
                 break;
+
             case 'u':
                 radix = 10;
                 sign = false;
                 argp = printf_number(argp, length, sign, radix);
                 break;
+
             case 'X':
             case 'x':
             case 'p':
@@ -129,16 +146,19 @@ void _cdecl printf(const char *fmt, ...)
                 sign = false;
                 argp = printf_number(argp, length, sign, radix);
                 break;
+
             case 'o':
                 radix = 8;
                 sign = false;
                 argp = printf_number(argp, length, sign, radix);
                 break;
+
+            // ignore invalid spec
             default:
                 break;
             }
 
-            // reset
+            // reset state
             state = PRINTF_STATE_NORMAL;
             length = PRINTF_LENGTH_DEFAULT;
             radix = 10;
@@ -159,6 +179,7 @@ int *printf_number(int *argp, int length, bool sign, int radix)
     int number_sign = 1;
     int pos = 0;
 
+    // process length
     switch (length)
     {
     case PRINTF_LENGTH_SHORT_SHORT:
@@ -212,13 +233,13 @@ int *printf_number(int *argp, int length, bool sign, int radix)
         }
         else
         {
-            number = *(unsigned long long *)argp;
+            number = *(unsigned long long int *)argp;
         }
         argp += 4;
         break;
     }
 
-    // convert to ASCII (reversed)
+    // convert number to ASCII
     do
     {
         uint32_t rem;
@@ -228,15 +249,24 @@ int *printf_number(int *argp, int length, bool sign, int radix)
 
     // add sign
     if (sign && number_sign < 0)
-    {
         buffer[pos++] = '-';
-    }
 
     // print number in reverse order
     while (--pos >= 0)
-    {
         putc(buffer[pos]);
-    }
 
     return argp;
+}
+
+void print_buffer(const char *msg, const void far *buffer, uint16_t count)
+{
+    const uint8_t far *u8Buffer = (const uint8_t far *)buffer;
+
+    puts(msg);
+    for (uint16_t i = 0; i < count; i++)
+    {
+        putc(g_HexChars[u8Buffer[i] >> 4]);
+        putc(g_HexChars[u8Buffer[i] & 0xF]);
+    }
+    puts("\r\n");
 }
