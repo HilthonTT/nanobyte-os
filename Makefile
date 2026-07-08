@@ -6,7 +6,6 @@ LD16  = /usr/bin/watcom/binl/wlink
 
 SRC_DIR   = src
 TOOLS_DIR = tools
-BUILD_DIR = build
 
 include build_scripts/config.mk
 
