@@ -8,7 +8,9 @@ bool DISK_Initialize(DISK *disk, uint8_t driveNumber)
   uint16_t cylinders, sectors, heads;
 
   if (!x86_Disk_GetDriveParams(disk->id, &driveType, &cylinders, &sectors, &heads))
+  {
     return false;
+  }
 
   disk->id = driveNumber;
   disk->cylinders = cylinders;
@@ -39,7 +41,9 @@ bool DISK_ReadSectors(DISK *disk, uint32_t lba, uint8_t sectors, void *dataOut)
   for (int i = 0; i < 3; i++)
   {
     if (x86_Disk_Read(disk->id, cylinder, sector, head, sectors, dataOut))
+    {
       return true;
+    }
 
     x86_Disk_Reset(disk->id);
   }

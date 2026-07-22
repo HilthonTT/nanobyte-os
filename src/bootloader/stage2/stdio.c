@@ -4,6 +4,18 @@
 #include <stdarg.h>
 #include <stdbool.h>
 
+#define PRINTF_STATE_NORMAL 0
+#define PRINTF_STATE_LENGTH 1
+#define PRINTF_STATE_LENGTH_SHORT 2
+#define PRINTF_STATE_LENGTH_LONG 3
+#define PRINTF_STATE_SPEC 4
+
+#define PRINTF_LENGTH_DEFAULT 0
+#define PRINTF_LENGTH_SHORT_SHORT 1
+#define PRINTF_LENGTH_SHORT 2
+#define PRINTF_LENGTH_LONG 3
+#define PRINTF_LENGTH_LONG_LONG 4
+
 const unsigned SCREEN_WIDTH = 80;
 const unsigned SCREEN_HEIGHT = 25;
 const uint8_t DEFAULT_COLOR = 0x7;
@@ -44,11 +56,13 @@ void setcursor(int x, int y)
 void clrscr()
 {
   for (int y = 0; y < SCREEN_HEIGHT; y++)
+  {
     for (int x = 0; x < SCREEN_WIDTH; x++)
     {
       putchr(x, y, '\0');
       putcolor(x, y, DEFAULT_COLOR);
     }
+  }
 
   g_ScreenX = 0;
   g_ScreenY = 0;
@@ -58,18 +72,22 @@ void clrscr()
 void scrollback(int lines)
 {
   for (int y = lines; y < SCREEN_HEIGHT; y++)
+  {
     for (int x = 0; x < SCREEN_WIDTH; x++)
     {
       putchr(x, y - lines, getchr(x, y));
       putcolor(x, y - lines, getcolor(x, y));
     }
+  }
 
   for (int y = SCREEN_HEIGHT - lines; y < SCREEN_HEIGHT; y++)
+  {
     for (int x = 0; x < SCREEN_WIDTH; x++)
     {
       putchr(x, y, '\0');
       putcolor(x, y, DEFAULT_COLOR);
     }
+  }
 
   g_ScreenY -= lines;
 }
@@ -104,7 +122,9 @@ void putc(char c)
     g_ScreenX = 0;
   }
   if (g_ScreenY >= SCREEN_HEIGHT)
+  {
     scrollback(1);
+  }
 
   setcursor(g_ScreenX, g_ScreenY);
 }
@@ -135,7 +155,9 @@ void printf_unsigned(unsigned long long number, int radix)
 
   // print number in reverse order
   while (--pos >= 0)
+  {
     putc(buffer[pos]);
+  }
 }
 
 void printf_signed(long long number, int radix)
@@ -148,18 +170,6 @@ void printf_signed(long long number, int radix)
   else
     printf_unsigned(number, radix);
 }
-
-#define PRINTF_STATE_NORMAL 0
-#define PRINTF_STATE_LENGTH 1
-#define PRINTF_STATE_LENGTH_SHORT 2
-#define PRINTF_STATE_LENGTH_LONG 3
-#define PRINTF_STATE_SPEC 4
-
-#define PRINTF_LENGTH_DEFAULT 0
-#define PRINTF_LENGTH_SHORT_SHORT 1
-#define PRINTF_LENGTH_SHORT 2
-#define PRINTF_LENGTH_LONG 3
-#define PRINTF_LENGTH_LONG_LONG 4
 
 void printf(const char *fmt, ...)
 {

@@ -5,7 +5,9 @@
 const char *strchr(const char *str, char chr)
 {
   if (str == NULL)
+  {
     return NULL;
+  }
 
   while (*str)
   {
@@ -23,7 +25,9 @@ char *strcpy(char *dst, const char *src)
   char *origDst = dst;
 
   if (dst == NULL)
+  {
     return NULL;
+  }
 
   if (src == NULL)
   {
