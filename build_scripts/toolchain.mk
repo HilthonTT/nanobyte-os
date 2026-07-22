@@ -1,81 +1,59 @@
-# i686-elf cross-toolchain for OS development.
-# Builds binutils + a freestanding GCC into $(PREFIX).
-# Usage: make -f toolchain.mk
 
-include $(dir $(lastword $(MAKEFILE_LIST)))config.mk
+TOOLCHAIN_PREFIX = $(abspath toolchain/$(TARGET))
+export PATH := $(TOOLCHAIN_PREFIX)/bin:$(PATH)
 
-# Derived paths (internal — edit config.mk, not these).
-SRC   := $(ROOT)/src
-BUILD := $(ROOT)/build
+toolchain: toolchain_binutils toolchain_gcc
 
-# The freshly built binutils must be on PATH before GCC is configured,
-# or the GCC build won't find $(TARGET)-as and the target libs fail.
-export PATH := $(PREFIX)/bin:$(PATH)
+BINUTILS_SRC = toolchain/binutils-$(BINUTILS_VERSION)
+BINUTILS_BUILD = toolchain/binutils-build-$(BINUTILS_VERSION)
 
-BINUTILS_TAR := $(SRC)/binutils-$(BINUTILS_VER).tar.xz
-GCC_TAR      := $(SRC)/gcc-$(GCC_VER).tar.xz
+toolchain_binutils: $(TOOLCHAIN_PREFIX)/bin/i686-elf-ld
 
-BINUTILS_SRC := $(SRC)/binutils-$(BINUTILS_VER)
-GCC_SRC      := $(SRC)/gcc-$(GCC_VER)
-
-BINUTILS_BUILD := $(BUILD)/binutils-$(BINUTILS_VER)
-GCC_BUILD      := $(BUILD)/gcc-$(GCC_VER)
-
-# Install markers: the presence of the compiled binary == that stage is done.
-AS  := $(PREFIX)/bin/$(TARGET)-as
-GCC := $(PREFIX)/bin/$(TARGET)-gcc
-
-.PHONY: toolchain binutils gcc toolchain-clean toolchain-distclean
-
-toolchain: gcc
-binutils:  $(AS)
-gcc:       $(GCC)
-
-# ---- download ----
-$(BINUTILS_TAR):
-	mkdir -p $(SRC)
-	wget -O $@ $(BINUTILS_URL)
-
-$(GCC_TAR):
-	mkdir -p $(SRC)
-	wget -O $@ $(GCC_URL)
-
-# ---- extract ----
-$(BINUTILS_SRC): $(BINUTILS_TAR)
-	tar -xf $< -C $(SRC)
-	touch $@
-
-$(GCC_SRC): $(GCC_TAR)
-	tar -xf $< -C $(SRC)
-	cd $(GCC_SRC) && ./contrib/download_prerequisites
-	touch $@
-
-# ---- binutils ----
-$(AS): $(BINUTILS_SRC)
-	mkdir -p $(BINUTILS_BUILD)
-	cd $(BINUTILS_BUILD) && $(BINUTILS_SRC)/configure \
-		--target=$(TARGET) \
-		--prefix=$(PREFIX) \
-		--with-sysroot \
-		--disable-nls \
+$(TOOLCHAIN_PREFIX)/bin/i686-elf-ld: $(BINUTILS_SRC).tar.xz
+	cd toolchain && tar -xf binutils-$(BINUTILS_VERSION).tar.xz
+	mkdir $(BINUTILS_BUILD)
+	cd $(BINUTILS_BUILD) && CFLAGS= ASMFLAGS= CC= CXX= LD= ASM= LINKFLAGS= LIBS= ../binutils-$(BINUTILS_VERSION)/configure \
+		--prefix="$(TOOLCHAIN_PREFIX)"	\
+		--target=$(TARGET)				\
+		--with-sysroot					\
+		--disable-nls					\
 		--disable-werror
-	$(MAKE) -j$(JOBS) -C $(BINUTILS_BUILD)
+	$(MAKE) -j8 -C $(BINUTILS_BUILD)
 	$(MAKE) -C $(BINUTILS_BUILD) install
 
-# ---- gcc (freestanding) ----
-$(GCC): $(GCC_SRC) $(AS)
-	mkdir -p $(GCC_BUILD)
-	cd $(GCC_BUILD) && $(GCC_SRC)/configure \
-		--target=$(TARGET) \
-		--prefix=$(PREFIX) \
-		--enable-languages=c,c++ \
-		--disable-nls \
+$(BINUTILS_SRC).tar.xz:
+	mkdir -p toolchain 
+	cd toolchain && wget $(BINUTILS_URL)
+
+
+GCC_SRC = toolchain/gcc-$(GCC_VERSION)
+GCC_BUILD = toolchain/gcc-build-$(GCC_VERSION)
+
+toolchain_gcc: $(TOOLCHAIN_PREFIX)/bin/i686-elf-gcc
+
+$(TOOLCHAIN_PREFIX)/bin/i686-elf-gcc: $(TOOLCHAIN_PREFIX)/bin/i686-elf-ld $(GCC_SRC).tar.xz
+	cd toolchain && tar -xf gcc-$(GCC_VERSION).tar.xz
+	mkdir $(GCC_BUILD)
+	cd $(GCC_BUILD) && CFLAGS= ASMFLAGS= CC= CXX= LD= ASM= LINKFLAGS= LIBS= ../gcc-$(GCC_VERSION)/configure \
+		--prefix="$(TOOLCHAIN_PREFIX)" 	\
+		--target=$(TARGET)				\
+		--disable-nls					\
+		--enable-languages=c,c++		\
 		--without-headers
-	$(MAKE) -j$(JOBS) -C $(GCC_BUILD) all-gcc all-target-libgcc
+	$(MAKE) -j8 -C $(GCC_BUILD) all-gcc all-target-libgcc
 	$(MAKE) -C $(GCC_BUILD) install-gcc install-target-libgcc
+	
+$(GCC_SRC).tar.xz:
+	mkdir -p toolchain
+	cd toolchain && wget $(GCC_URL)
 
-toolchain-clean:
-	rm -rf $(BUILD)
+#
+# Clean
+#
+clean-toolchain:
+	rm -rf $(GCC_BUILD) $(GCC_SRC) $(BINUTILS_BUILD) $(BINUTILS_SRC)
 
-toolchain-distclean:
-	rm -rf $(ROOT)
+clean-toolchain-all:
+	rm -rf toolchain/*
+
+.PHONY:  toolchain toolchain_binutils toolchain_gcc clean-toolchain clean-toolchain-all
