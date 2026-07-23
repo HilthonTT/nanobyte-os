@@ -138,7 +138,9 @@ bool FAT_Initialize(DISK *disk)
 
     // reset opened files
     for (int i = 0; i < MAX_FILE_HANDLES; i++)
+    {
         g_Data->OpenedFiles[i].Opened = false;
+    }
 
     return true;
 }
@@ -155,7 +157,9 @@ FAT_File far *FAT_OpenEntry(DISK *disk, FAT_DirectoryEntry *entry)
     for (int i = 0; i < MAX_FILE_HANDLES && handle < 0; i++)
     {
         if (!g_Data->OpenedFiles[i].Opened)
+        {
             handle = i;
+        }
     }
 
     // out of handles
@@ -190,9 +194,11 @@ uint32_t FAT_NextCluster(uint32_t currentCluster)
     uint32_t fatIndex = currentCluster * 3 / 2;
 
     if (currentCluster % 2 == 0)
+    {
         return (*(uint16_t *)(g_Fat + fatIndex)) & 0x0FFF;
-    else
-        return (*(uint16_t *)(g_Fat + fatIndex)) >> 4;
+    }
+
+    return (*(uint16_t *)(g_Fat + fatIndex)) >> 4;
 }
 
 uint32_t FAT_Read(DISK *disk, FAT_File far *file, uint32_t byteCount, void *dataOut)
@@ -293,12 +299,16 @@ bool FAT_FindFile(DISK *disk, FAT_File far *file, const char *name, FAT_Director
         ext = name + 11;
 
     for (int i = 0; i < 8 && name[i] && name + i < ext; i++)
+    {
         fatName[i] = toupper(name[i]);
+    }
 
     if (ext != NULL)
     {
         for (int i = 0; i < 3 && ext[i + 1]; i++)
+        {
             fatName[i + 8] = toupper(ext[i + 1]);
+        }
     }
 
     while (FAT_ReadEntry(disk, file, &entry))

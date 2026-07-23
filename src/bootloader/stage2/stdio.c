@@ -103,7 +103,9 @@ void putc(char c)
 
   case '\t':
     for (int i = 0; i < 4 - (g_ScreenX % 4); i++)
+    {
       putc(' ');
+    }
     break;
 
   case '\r':
@@ -221,7 +223,9 @@ void printf(const char *fmt, ...)
         state = PRINTF_STATE_SPEC;
       }
       else
+      {
         goto PRINTF_STATE_SPEC_;
+      }
       break;
 
     case PRINTF_STATE_LENGTH_LONG:
@@ -231,7 +235,9 @@ void printf(const char *fmt, ...)
         state = PRINTF_STATE_SPEC;
       }
       else
+      {
         goto PRINTF_STATE_SPEC_;
+      }
       break;
 
     case PRINTF_STATE_SPEC:

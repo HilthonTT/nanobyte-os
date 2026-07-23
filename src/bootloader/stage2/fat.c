@@ -172,7 +172,9 @@ FAT_File *FAT_OpenEntry(DISK *disk, FAT_DirectoryEntry *entry)
   {
     printf("FAT: open entry failed - read error cluster=%u lba=%u\n", fd->CurrentCluster, FAT_ClusterToLba(fd->CurrentCluster));
     for (int i = 0; i < 11; i++)
+    {
       printf("%c", entry->Name[i]);
+    }
     printf("\n");
     return false;
   }
@@ -186,9 +188,11 @@ uint32_t FAT_NextCluster(uint32_t currentCluster)
   uint32_t fatIndex = currentCluster * 3 / 2;
 
   if (currentCluster % 2 == 0)
+  {
     return (*(uint16_t *)(g_Fat + fatIndex)) & 0x0FFF;
-  else
-    return (*(uint16_t *)(g_Fat + fatIndex)) >> 4;
+  }
+
+  return (*(uint16_t *)(g_Fat + fatIndex)) >> 4;
 }
 
 uint32_t FAT_Read(DISK *disk, FAT_File *file, uint32_t byteCount, void *dataOut)
@@ -288,15 +292,21 @@ bool FAT_FindFile(DISK *disk, FAT_File *file, const char *name, FAT_DirectoryEnt
 
   const char *ext = strchr(name, '.');
   if (ext == NULL)
+  {
     ext = name + 11;
+  }
 
   for (int i = 0; i < 8 && name[i] && name + i < ext; i++)
+  {
     fatName[i] = toupper(name[i]);
+  }
 
   if (ext != name + 11)
   {
     for (int i = 0; i < 3 && ext[i + 1]; i++)
+    {
       fatName[i + 8] = toupper(ext[i + 1]);
+    }
   }
 
   while (FAT_ReadEntry(disk, file, &entry))
@@ -317,7 +327,9 @@ FAT_File *FAT_Open(DISK *disk, const char *path)
 
   // ignore leading slash
   if (path[0] == '/')
+  {
     path++;
+  }
 
   FAT_File *current = &g_Data->RootDirectory.Public;
 

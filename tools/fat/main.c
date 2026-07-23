@@ -34,7 +34,9 @@ int main(int argc, const char **argv)
     {
       printf("  ");
       for (int i = 0; i < 11; i++)
+      {
         putc(entry.Name[i], stdout);
+      }
       printf("\r\n");
     }
   }
