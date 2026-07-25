@@ -7,9 +7,9 @@ learning project, not an original OS.
 
 ## What it does so far
 
-The project uses a **two-stage bootloader**, with stage 2 and the kernel
-both written in C and built with a GCC `i686-elf` cross-compiler. The
-boot sequence is:
+The project uses a **two-stage bootloader** that hands off to a 32-bit C
+kernel. Stage 2 and the kernel are both written in C and built with a GCC
+`i686-elf` cross-compiler. The boot sequence is:
 
 1. The PC's BIOS loads **stage 1** (`src/bootloader/stage1/boot.asm`) —
    the 512-byte FAT12 boot sector — from sector 0 of the floppy image
@@ -23,18 +23,21 @@ boot sequence is:
    into 32-bit protected mode** before calling into the C entry point
    `start` (`main.c`). From there it:
    - initialises the disk (`disk.c`) and the FAT12 driver (`fat.c`),
-   - opens the root directory and lists its first few entries,
-   - opens a file inside a subdirectory (`mydir/test.txt`), reads it,
-     and prints its contents,
-   - then halts.
+   - opens `/kernel.bin`, reads it into memory in chunks, and
+   - **jumps to the kernel entry point**.
+4. **The kernel** (`src/kernel/`) starts at `start` (`main.c`): it zeroes
+   the BSS, then calls `HAL_Initialize()` to bring up the hardware
+   abstraction layer (`hal/`), which installs the kernel's own
+   **GDT** and **IDT** (`arch/i686/`). It then clears the screen, prints
+   a hello-world message, and halts.
 
-If something goes wrong during boot (disk error, missing `STAGE2.BIN`)
-stage 1 prints a message and waits for a keypress before rebooting.
+If something goes wrong during boot (disk error, missing `STAGE2.BIN` or
+`KERNEL.BIN`) the offending stage prints a message before halting; stage 1
+waits for a keypress and reboots.
 
-> **Note:** stage 2 currently demonstrates the FAT12 driver rather than
-> handing off to the kernel. `KERNEL.BIN` (the tiny hello-world in
-> `src/kernel/main.c`) is built and copied onto the floppy image, but
-> stage 2 does not yet load or jump to it.
+> **Note:** the IDT is loaded but no interrupt gates are enabled yet, so
+> the kernel does not yet handle interrupts — the plumbing (GDT, IDT,
+> port I/O helpers) is in place for the next steps in the series.
 
 ## Repository layout
 
@@ -58,10 +61,17 @@ stage 1 prints a message and waits for a keypress before rebooting.
 │   │       ├── minmax.h     # min/max macros
 │   │       └── linker.ld    # GNU ld linker script
 │   └── kernel/
-│       ├── main.c           # kernel entry start() (hello world for now)
+│       ├── main.c           # kernel entry start(): HAL init + hello world
 │       ├── stdio.c/.h       # printf, screen output
 │       ├── memory.c/.h      # memcpy/memset etc.
-│       ├── x86.asm/.h       # port I/O helpers
+│       ├── hal/             # hardware abstraction layer
+│       │   └── hal.c/.h     # HAL_Initialize() — brings up GDT + IDT
+│       ├── arch/i686/       # i686-specific low-level setup
+│       │   ├── gdt.c/.h/.asm  # Global Descriptor Table
+│       │   ├── idt.c/.h/.asm  # Interrupt Descriptor Table
+│       │   └── io.asm/.h      # port I/O helpers (inb/outb)
+│       ├── util/
+│       │   └── binary.h     # bit-flag helper macros
 │       └── linker.ld        # GNU ld linker script
 ├── tools/
 │   └── fat/                 # host-side FAT12 image reader
@@ -137,9 +147,9 @@ In Bochs (with the debugger):
 ./debug.sh
 ```
 
-You should see the loading message, the first few root-directory
-entries, and the contents of `mydir/test.txt` printed to the screen,
-after which the system halts.
+You should see the bootloader load stage 2, stage 2 load the kernel, and
+then the kernel print `Hello world from kernel!!!`, after which the
+system halts.
 
 ## Inspecting an image on the host
 
@@ -168,9 +178,20 @@ make clean-toolchain-all  # wipe everything under toolchain/
 The assembly files are heavily commented for readers who have never
 written assembly before — they walk through what each instruction does,
 why the BIOS calls are arranged the way they are, and how FAT12 fits into
-the boot process. Start with `src/bootloader/stage1/boot.asm`, then read
-the C stage 2 in `src/bootloader/stage2/` (`entry.asm` → `main.c` →
-`fat.c` → `disk.c`).
+the boot process. A good reading order follows the boot flow:
+
+1. `src/bootloader/stage1/boot.asm` — the boot sector
+2. `src/bootloader/stage2/` — the C loader (`entry.asm` → `main.c` →
+   `fat.c` → `disk.c`)
+3. `src/kernel/` — the kernel (`main.c` → `hal/hal.c` →
+   `arch/i686/gdt.c` → `arch/i686/idt.c`)
+
+## Continuous integration
+
+A GitHub Actions workflow (`.github/workflows/build.yml`) builds the OS on
+every push and pull request. It caches the `i686-elf` cross-compiler
+(keyed on `build_scripts/config.mk`, so it only rebuilds when the pinned
+versions change) and uploads `main_floppy.img` as a build artifact.
 
 ## Credits
 
