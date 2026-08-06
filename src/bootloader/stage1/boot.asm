@@ -33,6 +33,8 @@ ebr_volume_id:              db 12h, 34h, 56h, 78h   ; serial number, value doesn
 ebr_volume_label:           db 'NANOBYTE OS'        ; 11 bytes, padded with spaces
 ebr_system_id:              db 'FAT12   '           ; 8 bytes
 
+times 90-($-$$) db 0
+
 ;
 ; Code goes here
 ;
@@ -73,19 +75,21 @@ start:
     cmp bx, 0xAA55
     jne .no_disk_extensions
 
-    ; extensions are present, use them
+    ; extensions are present
     mov byte [have_extensions], 1
+    jmp .after_disk_extensions_check
 
 .no_disk_extensions:
     mov byte [have_extensions], 0
 
-    ; load stage 2
+.after_disk_extensions_check:
+    ; load stage2
     mov si, stage2_location
 
     mov ax, STAGE2_LOAD_SEGMENT         ; set segment registers
     mov es, ax
 
-    mov bx, STAGE2_LOAD_OFFSET           ; set offset to load stage 2
+    mov bx, STAGE2_LOAD_OFFSET
 
 .loop:
     mov eax, [si]
@@ -99,8 +103,10 @@ start:
     call disk_read
 
     xor ch, ch
-    shl cx, 10
-    add es, cx
+    shl cx, 5
+    mov di, es
+    add di, cx
+    mov es, di
 
     jmp .loop
 
@@ -119,6 +125,7 @@ start:
 
     cli                                 ; disable interrupts, this way CPU can't get out of "halt" state
     hlt
+
 
 ;
 ; Error handlers
@@ -142,6 +149,7 @@ wait_key_and_reboot:
 .halt:
     cli                         ; disable interrupts, this way CPU can't get out of "halt" state
     hlt
+
 
 ;
 ; Prints a string to the screen
@@ -214,19 +222,35 @@ lba_to_chs:
 ;
 ; Reads sectors from a disk
 ; Parameters:
-;   - ax: LBA address
+;   - eax: LBA address
 ;   - cl: number of sectors to read (up to 128)
 ;   - dl: drive number
 ;   - es:bx: memory address where to store read data
 ;
 disk_read:
 
-    push ax                             ; save registers we will modify
+    push eax                            ; save registers we will modify
     push bx
     push cx
     push dx
+    push si
     push di
 
+    cmp byte [have_extensions], 1
+    jne .no_disk_extensions
+
+    ; with extensions
+    mov [extensions_dap.lba], eax
+    mov [extensions_dap.segment], es
+    mov [extensions_dap.offset], bx
+    mov [extensions_dap.count], cl
+
+    mov ah, 0x42
+    mov si, extensions_dap
+    mov di, 3                           ; retry count
+    jmp .retry
+
+.no_disk_extensions:
     push cx                             ; temporarily save CL (number of sectors to read)
     call lba_to_chs                     ; compute CHS
     pop ax                              ; AL = number of sectors to read
@@ -256,10 +280,11 @@ disk_read:
     popa
 
     pop di
+    pop si
     pop dx
     pop cx
     pop bx
-    pop ax                             ; restore registers modified
+    pop eax                            ; restore registers modified
     ret
 
 
@@ -277,19 +302,30 @@ disk_reset:
     popa
     ret
 
+
 msg_loading:            db 'Loading...', ENDL, 0
 msg_read_failed:        db 'Read from disk failed!', ENDL, 0
 msg_stage2_not_found:   db 'STAGE2.BIN file not found!', ENDL, 0
 file_stage2_bin:        db 'STAGE2  BIN'
 
 have_extensions:        db 0
-stage2_location:        times 30 db 0
+extensions_dap:
+    .size:              db 10h
+                        db 0
+    .count:             dw 0
+    .offset:            dw 0
+    .segment:           dw 0
+    .lba:               dq 0
+
+
 
 STAGE2_LOAD_SEGMENT     equ 0x0
 STAGE2_LOAD_OFFSET      equ 0x500
 
+times 510-30-($-$$) db 0
 
-times 510-($-$$) db 0
+stage2_location:        times 30 db 0
+
 dw 0AA55h
 
 buffer:
